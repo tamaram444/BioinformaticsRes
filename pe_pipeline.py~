@@ -1,0 +1,91 @@
+from __future__ import print_function
+import sys, os, math
+from commands import getoutput
+###########################
+genome=sys.argv[1]
+###########################
+
+#gunzip files (make sure there is enough space on hd)
+#illumina_filter.sh
+
+#filter out reads not passing initial Illumina quality filter
+#fastq_illumina_filter-Linux-x86_64 --keep N -v -v -o input output
+#trim reads to remove low quality bases on the ends
+#sickle pe -f input_file1.fastq -r input_file2.fastq -t sanger \
+#-o trimmed_output_file1.fastq -p trimmed_output_file2.fastq \
+#-s trimmed_singles_file.fastq -q 12 -l 15
+
+
+print('start alignment')
+#prefix='BC' ##### !!!!PREFIX of FILES!!!!!
+fwd_files=getoutput('ls *R1*').split('\n')
+fwd_files.sort()
+rev_files=getoutput('ls *R2*').split('\n')
+rev_files.sort()
+
+for i in range(len(fwd_files)):
+	print(fwd_files[i], rev_files[i])
+	sai_fwd_out=fwd_files[i].split('.')[0] + '_aln.sai'
+	aln1='bwa aln -n 0.1 -o 2 -e 6 -l 20 -k 3 -t 4 %s %s > %s' % (genome, fwd_files[i], sai_fwd_out) ####### GENOME FOLDER
+	print(aln1)
+	os.system(aln1)
+	sai_rev_out=rev_files[i].split('.')[0]+'_aln.sai'
+	aln2='bwa aln -n 0.1 -o 2 -e 6 -l 20 -k 3 -t 4 %s %s > %s' % (genome, rev_files[i], sai_rev_out)  ###### GENOME FOLDER
+	print(aln2)
+	os.system(aln2)
+	sam_out='_'.join(sai_rev_out.split('_')[:2]) + '_pe_aln.sam'
+	cmd2='bwa sampe %s %s %s %s %s > %s' % (genome, sai_fwd_out, sai_rev_out, fwd_files[i], rev_files[i], sam_out) ###### GENOME FOLDER
+	print(cmd2)
+	os.system(cmd2)
+	
+
+
+
+#################################################################################################
+##### filter reads with a mapping quality below 10
+##### script for post process reads and call snp
+##### reads should be in sam format
+##### 
+
+aln=getoutput('ls *sam').split('\n')
+for i in aln:
+	name=i.split('.')[0] + '_sort'
+	cmd='samtools view -bShq 10 -t %s %s | samtools sort - %s' % (genome, i, name)
+	print(cmd)
+	os.system(cmd)
+	
+
+##################################################################
+print('quality recalibration')
+#os.system('R CMD BATCH qual_recal.R')
+#os.system('rm *sort.bam') #### remove uncalibrated bam file
+
+
+######################## creates a bunch of files that finish with sort.bam
+####################################################################################################
+#########	QUALITY SCORE RECALIBRATION
+#########	call an r script (in the same folder)
+######### 	remember to install r libraries (ReQON and Rsamtools)
+#################################################################
+
+	
+##### subscript for indexing bam files
+
+bam_files=getoutput('ls *.bam').split('\n')
+for i in bam_files:
+	cmd='samtools index %s' % i
+	print(cmd)
+	os.system(cmd)
+
+###########################################################################
+##############
+############## SNP calling and filtering subroutine
+	print('starting snps calling')
+	os.system('samtools mpileup -uDgf %s *.bam|bcftools view -vcg -d 0.1 - > pvtfl1y_all_snp_raw_vcf ' % genome) ### GENOME FOLDER!!!!!!
+	os.system('vcftools --vcf pvtfl1y_all_snp_raw.vcf --maf 0.05 --minQ 20 --min-meanDP 5 --max-meanDP 1000 --recode --out filtered_snp') ### 
+####### export some basic statistics
+
+
+
+
+
